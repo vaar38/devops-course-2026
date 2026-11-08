@@ -168,3 +168,58 @@ curl --cacert ~/devops.crt -I https://devops.local
 
 Скрипт деплоя требует чистого состояния Git.
 Скрипт scripts/audit.sh запускается на VM.
+
+
+## 9. Контейнеризация
+
+Docker Engine установлен из официального apt-репозитория
+https://download.docker.com/linux/ubuntu.
+Версия: 29.9.3.
+Установлены docker-ce, docker-ce-cli, containerd.io,
+docker-buildx-plugin и docker-compose-plugin.
+
+В группу docker входит devops.
+После добавления пользователя требуется новая SSH-сессия.
+
+Проект на сервере: /home/devops/app.
+Исходники в репозитории: app/.
+Файл Compose: /home/devops/app/docker-compose.yml.
+
+Секреты: /home/devops/app/.env, владелец devops, права 600.
+Файл создаётся на сервере из .env.example со случайным паролем.
+В Git и контекст сборки .env не включается.
+При доставке rsync используется --exclude=.env.
+
+Сервисы:
+- app: образ devops-app:1.0, процесс от пользователя app.
+- db: postgres:16-alpine, проверка готовности pg_isready.
+- Общая сеть backend, имя СУБД для приложения — db.
+- Порт приложения: 127.0.0.1:5000 → 5000 контейнера.
+- Порт PostgreSQL 5432 на VM не публикуется.
+- Именованный том app_db_data хранит данные PostgreSQL.
+- docker compose down сохраняет данные; down -v удаляет том.
+
+Запуск на VM:
+
+```bash
+cd ~/app
+docker compose up -d --build
+```
+
+В HTTPS-блок Nginx файла
+/etc/nginx/sites-available/devops-site добавлено:
+
+```nginx
+location /app/ {
+    proxy_pass http://127.0.0.1:5000/;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Применение: sudo nginx -t && sudo systemctl reload nginx.
+Статический ресурс / сохранён.
+Приложение доступно через https://devops.local/app/,
+проверка работоспособности — /app/health.
