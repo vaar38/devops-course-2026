@@ -77,6 +77,24 @@ if [[ $FIND_STATUS -eq 0 && $KEY_STATUS -eq 0 &&
 else
     check "Безопасные права сайта и ключа" "yes" "no"
 fi
+echo "[5] Контейнеризация"
 
+check "Docker активен" "active" "$(systemctl is-active docker)"
+
+check "БД healthy" "healthy" \
+    "$(docker inspect -f '{{.State.Health.Status}}' app-db-1)"
+
+SOCKETS=$(ss -H -tln)
+SOCKET_STATUS=$?
+BAD_PORTS=$(awk '$4 ~ /:(5000|5432)$/ && $4 !~ /^127\.0\.0\.1:/ {print $4}' <<< "$SOCKETS")
+
+if [[ $SOCKET_STATUS -eq 0 && -z "$BAD_PORTS" ]]; then
+    check "Порты приложения и БД закрыты извне" "yes" "yes"
+else
+    check "Порты приложения и БД закрыты извне" "yes" "no"
+fi
+
+check "Права .env равны 600" "600" \
+    "$(stat -c '%a' "$HOME/app/.env")"
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
